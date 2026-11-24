@@ -32,7 +32,7 @@ def generate(load, output, db_path, mode, source, channel):
         pending, digests, results = [], {}, {}
         for vacancy in batch.vacancies:
             identity = vacancy["id"]
-            digest = fingerprint([model, rules, vacancy])
+            digest = fingerprint([model, rules, "draft-source-v1", vacancy])
             digests[identity] = digest
             if identity in cache and cache[identity][0] == digest:
                 results[identity] = digest, json.loads(cache[identity][1])
@@ -40,8 +40,10 @@ def generate(load, output, db_path, mode, source, channel):
                 pending.append(vacancy)
 
         if pending:
-            for result in analyse_group(pending, ClarityModel()):
+            for vacancy, result in zip(pending, analyse_group(pending, ClarityModel()), strict=True):
                 identity = result["record"]["id"]
+                if any(item["topic"] == "workplace" and item["type"] == "conflict" for item in result["record"]["issues"]):
+                    result["draft_source"] = vacancy
                 results[identity] = digests[identity], result
 
         ordered = [results[item["id"]][1] for item in batch.vacancies]

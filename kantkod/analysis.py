@@ -298,8 +298,13 @@ def workplace_review(address_fields, prose):
     modes = [(mode, f) for f in phrases if (mode := work_mode(f.text))]
     remote = next((f for mode, f in modes if mode == "remote_only" and not CONDITIONAL.search(f.text)), None)
     office = next((f for mode, f in modes if mode == "office" and not CONDITIONAL.search(f.text)), None)
+    hybrid = next((f for mode, f in modes if mode == "hybrid" and not CONDITIONAL.search(f.text)), None)
     if remote and office:
         return [issue("workplace", "conflict", [remote, office], "Полная удалёнка несовместима с обязательным присутствием в офисе.")], [], f"{remote.text} / {office.text}"
+    fixed_office = office if office and re.search(r"ежеднев|кажд\w*\s+(?:день|утро)|(?:только|полностью)\s+в офис", office.text) else None
+    if hybrid and (remote or fixed_office):
+        other = remote or fixed_office
+        return [issue("workplace", "conflict", [hybrid, other], "Гибридный формат расходится с другим условием о месте работы.")], [], f"{hybrid.text} / {other.text}"
     text_addresses = set()
     for field in prose:
         text = field.text
@@ -314,7 +319,7 @@ def workplace_review(address_fields, prose):
             text_addresses.add((prefix + ", " if prefix else "") + match[0])
     stated_address = any(re.search(r"\b(?:ул|улица|проспект|дом|пер|шоссе|бульвар|площадь)\b|\d", f.text) for f in address_fields)
     summary = " / ".join(sorted(text_addresses | {f.text for f in address_fields + [f for _, f in modes]}))
-    if stated_address or text_addresses or any(mode in {"remote", "remote_only"} for mode, _ in modes):
+    if stated_address or text_addresses or any(mode in {"remote", "remote_only", "office", "hybrid"} for mode, _ in modes):
         return [], [], summary
     if not all_fields:
         return [missing("workplace", "addresses.address")], [], ""

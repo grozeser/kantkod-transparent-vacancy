@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .analysis import TOPICS
+from .preview import preview_vacancy
 from .source import read_json
 from .storage import database, read_editor, set_status
 
@@ -62,7 +63,7 @@ def serve_editor(report_path, db_path, port):
                 self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(exc)})
 
         def do_POST(self):
-            if self.path != "/status":
+            if self.path not in {"/status", "/preview"}:
                 self.send_json(HTTPStatus.NOT_FOUND, {"error": "Действие не найдено"})
                 return
             origin = self.headers.get("Origin")
@@ -76,14 +77,18 @@ def serve_editor(report_path, db_path, port):
                     raise ValueError("Некорректный размер запроса")
                 data = json.loads(self.rfile.read(length))
                 if not isinstance(data, dict):
-                    raise ValueError("Нужен объект с новым статусом")
+                    raise ValueError("Некорректные данные запроса")
                 with database(db_path) as connection:
-                    set_status(connection, channel, data.get("id"), data.get("topic"), data.get("status"), data.get("version"))
-                self.send_json(HTTPStatus.OK, {"saved": True})
+                    if self.path == "/preview":
+                        result = preview_vacancy(connection, channel, data)
+                    else:
+                        set_status(connection, channel, data.get("id"), data.get("topic"), data.get("status"), data.get("version"))
+                        result = {"saved": True}
+                self.send_json(HTTPStatus.OK, result)
             except (ValueError, UnicodeError) as exc:
                 self.send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             except (OSError, sqlite3.Error):
-                self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Статус не сохранился. Повторите действие."})
+                self.send_json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Действие не выполнено. Повторите попытку."})
 
     if not 1024 <= port <= 65535:
         raise ValueError("Укажите порт от 1024 до 65535")

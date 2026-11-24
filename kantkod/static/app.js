@@ -7,6 +7,8 @@ const fieldLabels = {duty: "Обязанности", "requirement.qualification"
 const rank = {conflict: 4, review: 3, missing: 2, ambiguous: 1};
 const model = {data: null, selected: null, topic: null};
 let noticeTimer;
+let draftSelection;
+let draftRevision = 0;
 
 function element(tag, text, classes) {
   const part = document.createElement(tag);
@@ -165,6 +167,81 @@ function displayEvidence(value) {
   return String(value ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function draftChoice(label, value, checked) {
+  const wrapper = element("label", undefined, "draft-choice");
+  const input = element("input");
+  input.type = "checkbox";
+  input.value = value;
+  input.checked = checked;
+  wrapper.append(input, element("span", label));
+  return wrapper;
+}
+
+function resetDraftResult() {
+  draftRevision++;
+  $("draft-run").disabled = false;
+  $("draft-message").textContent = "";
+  $("draft-result").hidden = true;
+  $("draft-result").replaceChildren();
+}
+
+function openDraft(vacancy, issue) {
+  draftSelection = {id: vacancy.id, evidence: issue.evidence};
+  $("draft-mode").value = "";
+  $("draft-days").hidden = true;
+  $("draft-week").replaceChildren(...["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map((day, i) => draftChoice(day, i, false)));
+  $("draft-fields").replaceChildren(...issue.evidence.map((item, i) => draftChoice((fieldLabels[item.field] || item.field) + " — " + displayEvidence(item.quote), i, true)));
+  resetDraftResult();
+  $("draft-dialog").showModal();
+  $("draft-mode").focus();
+}
+
+function draftChecked(id) {
+  return [...$(id).querySelectorAll("input:checked")].map((input) => Number(input.value));
+}
+
+async function runDraft() {
+  resetDraftResult();
+  const revision = draftRevision;
+  $("draft-run").disabled = true;
+  $("draft-message").textContent = "Проверяем черновик…";
+  try {
+    const response = await fetch("/preview", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({...draftSelection, mode: $("draft-mode").value, days: draftChecked("draft-week"), fields: draftChecked("draft-fields")})
+    });
+    const result = await response.json();
+    if (revision !== draftRevision) return;
+    if (!response.ok) throw new Error(result.error);
+    $("draft-message").textContent = result.workplace_conflict ? "Противоречие формата работы осталось." : "Противоречие формата работы устранено в черновике.";
+    const root = $("draft-result");
+    const summary = element("p", "Закрыто замечаний: " + result.closed.length + ". Осталось замечаний: " + result.remaining.length + ".", "draft-intro");
+    root.append(summary);
+    for (const entry of result.closed) root.append(element("p", "Закрыто: " + model.data.topics[entry.topic] + " — " + entry.problem));
+    for (const entry of result.remaining) root.append(element("p", "Осталось: " + model.data.topics[entry.topic] + " — " + entry.problem));
+    for (const change of result.changes) {
+      root.append(element("h3", fieldLabels[change.field] || change.field));
+      const pair = element("div", undefined, "draft-comparison");
+      for (const [label, content] of [["До", change.before], ["После", change.after]]) {
+        const paragraph = element("p");
+        paragraph.append(element("strong", label), document.createTextNode(displayEvidence(content)));
+        pair.append(paragraph);
+      }
+      root.append(pair);
+    }
+    const text = element("textarea");
+    text.readOnly = true;
+    text.setAttribute("aria-label", "Черновик для копирования");
+    text.value = result.changes.map((change) => (fieldLabels[change.field] || change.field) + "\n" + displayEvidence(change.after)).join("\n\n");
+    root.append(text, button("Скопировать черновик", () => copy(text.value, text)));
+    root.hidden = false;
+  } catch (error) {
+    if (revision === draftRevision) $("draft-message").textContent = error.message;
+  } finally {
+    if (revision === draftRevision) $("draft-run").disabled = false;
+  }
+}
+
 function exportCard(vacancy) {
   const lines = [vacancy.title, vacancy.id, vacancy.employer || "Работодатель не указан"];
   if (vacancy.url) lines.push(vacancy.url);
@@ -247,6 +324,9 @@ function issueCard(vacancy, issue) {
   question.append(element("strong", "Вопрос работодателю"), document.createTextNode(issue.recommendation));
   const actions = element("div", undefined, "issue-actions");
   actions.append(button("Скопировать вопрос", () => copy(issue.recommendation)));
+  if (issue.topic === "workplace" && issue.type === "conflict") {
+    actions.append(button("Проверить перед публикацией", () => openDraft(vacancy, issue)));
+  }
   const status = statusSelect(vacancy, issue.topic);
   if (status) actions.append(status);
   article.append(evidence, question, actions);
@@ -387,4 +467,9 @@ for (const id of ["topic-filter", "type-filter"]) $(id).addEventListener("change
 $("refresh").addEventListener("click", () => load());
 $("group-close").addEventListener("click", () => $("group-dialog").close());
 $("group-copy").addEventListener("click", () => copy($("group-text").value, $("group-text")));
+$("draft-close").addEventListener("click", () => $("draft-dialog").close());
+$("draft-mode").addEventListener("change", () => { $("draft-days").hidden = $("draft-mode").value !== "hybrid"; });
+$("draft-dialog").addEventListener("change", resetDraftResult);
+$("draft-dialog").addEventListener("close", resetDraftResult);
+$("draft-run").addEventListener("click", runDraft);
 load();

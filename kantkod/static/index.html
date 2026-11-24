@@ -49,6 +49,17 @@
     <textarea id="group-text" aria-label="Текст пакета вопросов" readonly></textarea>
     <button id="group-copy" class="primary" type="button">Скопировать текст</button>
   </dialog>
+  <dialog id="draft-dialog" aria-labelledby="draft-title">
+    <div class="dialog-head"><h2 id="draft-title">Проверка перед публикацией</h2><button id="draft-close" class="secondary" type="button">Закрыть</button></div>
+    <p class="draft-intro">Укажите условия, которые подтвердил работодатель.</p>
+    <label for="draft-mode">Формат работы</label>
+    <select id="draft-mode"><option value="">Выберите формат</option><option value="office">Офис</option><option value="hybrid">Гибрид</option><option value="remote">Удалёнка</option></select>
+    <fieldset id="draft-days" hidden><legend>Дни в офисе</legend><div id="draft-week"></div></fieldset>
+    <fieldset><legend>Какие цитаты заменить</legend><div id="draft-fields"></div></fieldset>
+    <button id="draft-run" class="primary" type="button">Проверить черновик</button>
+    <p id="draft-message" class="draft-intro" role="status"></p>
+    <div id="draft-result" hidden></div>
+  </dialog>
   <p id="message" class="toast" role="status" aria-live="polite" hidden></p>
 </body>
 </html>

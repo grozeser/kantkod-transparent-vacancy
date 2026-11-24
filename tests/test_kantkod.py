@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 from kantkod.analysis import analyse_group
 from kantkod.evaluation import BASE, evaluate_model
 from kantkod.pipeline import run_report
+from kantkod.preview import analyse_draft, preview_vacancy
 from kantkod.source import Batch, InputError, load_api, load_file, parse_response, read_json
 from kantkod.storage import database, read_editor, report_lock, set_status
 
@@ -129,6 +130,28 @@ class AnalysisTests(unittest.TestCase):
         result = analyse_group([row], None)[0]
         self.assertEqual(result["conditions"]["workplace"], "гусев, ул. заводская, д. 9")
         self.assertFalse(any(item["topic"] == "workplace" for item in result["record"]["issues"]))
+
+    def test_hybrid_is_compatible_with_office_on_one_day(self):
+        row = vacancy(description="Гибридный формат. Обязательное присутствие в офисе по средам.")
+        self.assertFalse(any(item["topic"] == "workplace" for item in only_issues(row)))
+
+    def test_draft_resolves_conflict_only_when_both_fields_are_consistent(self):
+        row = next(item for item in load_file(SAMPLE).vacancies if item["id"] == "DEMO-39-004")
+        original = json.dumps(row, sort_keys=True)
+        before = only_issues(row)
+        for selection in ([0], [1]):
+            trial = analyse_draft(row, before, selection, "hybrid", [2])
+            self.assertTrue(trial["workplace_conflict"])
+            self.assertEqual(len(trial["changes"]), 1)
+        accepted = analyse_draft(row, before, [0, 1], "hybrid", [2])
+        self.assertFalse(accepted["workplace_conflict"])
+        self.assertEqual(len(accepted["changes"]), 2)
+        self.assertEqual([item["topic"] for item in accepted["closed"]], ["workplace"])
+        self.assertTrue(all("среда" in item["after"] for item in accepted["changes"]))
+        self.assertIn("Приём звонков", next(item["after"] for item in accepted["changes"] if item["field"] == "duty"))
+        self.assertEqual(json.dumps(row, sort_keys=True), original)
+        with self.assertRaisesRegex(ValueError, "дни присутствия"):
+            analyse_draft(row, before, [0, 1], "hybrid", [])
 
     def test_local_sample_counts_and_evidence(self):
         with TemporaryDirectory() as directory:
@@ -275,6 +298,19 @@ class StorageTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "уже обновляется"):
                 with report_lock(self.output):
                     self.fail("Second writer acquired the same lock")
+
+    def test_draft_rejects_stale_evidence_and_keeps_the_saved_report(self):
+        original = vacancy(duty="Работа полностью дистанционная.", description="Обязательное ежедневное присутствие в офисе.")
+        report = self.run_rows(original)
+        finding = next(item for item in report["vacancies"][0]["issues"] if item["topic"] == "workplace")
+        data = {"id": "A", "mode": "hybrid", "days": [2], "fields": [0, 1], "evidence": finding["evidence"]}
+        before = self.output.read_bytes()
+        with database(self.store) as connection:
+            self.assertFalse(preview_vacancy(connection, self.channel, data)["workplace_conflict"])
+            with self.assertRaisesRegex(ValueError, "Исходные условия изменились"):
+                preview_vacancy(connection, self.channel, {**data, "evidence": []})
+        self.assertEqual(self.output.read_bytes(), before)
+        self.assertNotIn("draft_source", before.decode())
 
 
 if __name__ == "__main__":

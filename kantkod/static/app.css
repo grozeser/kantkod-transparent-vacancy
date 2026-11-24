@@ -104,6 +104,18 @@ dialog::backdrop { background: #16323a99; }
 .dialog-head { display: flex; gap: 8px; align-items: start; justify-content: space-between; }
 .dialog-head h2 { font-size: 19px; }
 textarea { width: 100%; min-height: 236px; margin-block: 13px; resize: vertical; padding: 10px; border: 1px solid #b9cbce; border-radius: 5px; }
+#draft-dialog { max-height: 90vh; }
+#draft-dialog fieldset { border: 1px solid var(--line); border-radius: 5px; margin: 10px 0; padding: 7px 10px; }
+#draft-dialog legend { font-weight: 650; padding-inline: 3px; }
+.draft-intro { margin-block: 9px; color: var(--muted); }
+.draft-choice { display: flex; align-items: start; gap: 7px; padding-block: 4px; overflow-wrap: anywhere; }
+.draft-choice input { width: 16px; min-height: 16px; flex: 0 0 16px; margin: 4px 0 0; padding: 0; }
+#draft-week { display: flex; gap: 4px 12px; flex-wrap: wrap; }
+#draft-result textarea { min-height: 100px; }
+.draft-comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-block: 5px 13px; }
+.draft-comparison p { padding: 8px; background: var(--ground); border-radius: 4px; overflow-wrap: anywhere; }
+.draft-comparison strong { display: block; margin-bottom: 4px; }
+@media (max-width: 480px) { .draft-comparison { grid-template-columns: 1fr; } }
 .toast { position: fixed; z-index: 5; inset: auto 22px 22px auto; max-width: calc(100% - 44px); border-radius: 7px; padding: 10px 14px; background: var(--deep); color: white; }
 @media (max-width: 900px) {
   .wrap { width: calc(100% - 36px); }
