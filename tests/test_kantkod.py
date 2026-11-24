@@ -85,6 +85,51 @@ class AnalysisTests(unittest.TestCase):
     def test_office_address_alone_does_not_contradict_remote(self):
         self.assertFalse(any(item["topic"] == "workplace" for item in only_issues(vacancy(description="Полностью дистанционная работа."))))
 
+    def test_review_cases_preserve_the_meaning_and_source_of_each_field(self):
+        cases = [
+            ("workplace", "conflict", {"description": "Работа полностью дистанционная. Обязательно ежедневное присутствие в офисе."}),
+            ("workplace", "conflict", {"description": "Только удалённый формат, но ежедневно нужно присутствовать в офисе."}),
+            ("workplace", None, {"description": "Полностью дистанционная работа. Присутствие в офисе не требуется."}),
+            ("workplace", None, {"description": "Работа полностью дистанционная. Ежедневное присутствие в офисе необязательно."}),
+            ("workplace", "conflict", {"description": "<p>Полностью удалённая работа.</p><p>Обязательное присутствие в офисе каждое утро.</p>"}),
+            ("workplace", None, {"description": "Гибридный формат: два дня в офисе, три дня дома."}),
+            ("duties", "missing", {"duty": None, "description": "Оплата 47 000 рублей в месяц."}),
+            ("duties", "missing", {"duty": None, "description": "Оклад 47000 ₽"}),
+            ("duties", None, {"duty": None, "description": "Вести реестр обращений и готовить акты осмотра."}),
+            ("workplace", None, {"addresses": None, "description": "Место работы: Калининград, ул. Мира, д. 8."}),
+            ("workplace", None, {"addresses": None, "description": "Место работы: Калининград, ул. Мира, д. 18."}),
+            ("schedule", "conflict", {"schedule": "График 5/2, 09:00–18:00", "description": "График работы: два дня через два, 09:00–18:00."}),
+            ("schedule", "conflict", {"schedule": "График 2/2", "description": "Рабочий график с понедельника по пятницу."}),
+            ("schedule", None, {"schedule": "Сменный график 2/2", "description": "График работы: два дня через два."}),
+            ("schedule", "conflict", {"schedule": "5/2", "description": "Рабочий график: сутки через трое."}),
+            ("schedule", None, {"schedule": "Сменный график 1/3", "description": "Рабочий график: сутки через трое."}),
+            ("schedule", None, {"schedule": "Гибкий график", "description": "Рабочий график: по будням, 10:00–18:00."}),
+            ("pay", None, {"description": "Оклад 12 000 руб. за неделю."}),
+            ("pay", None, {"description": "Оклад 12 000 ₽/неделю."}),
+            ("pay", "conflict", {"description": "Оклад 120 000 руб. в месяц."}),
+            ("title", "conflict", {"job-name": "Водитель автобуса", "description": "Должность: бухгалтер. Готовить квартальные отчёты."}),
+            ("title", None, {"job-name": "Инженер по эксплуатации зданий", "description": "Должность: инженер по эксплуатации."}),
+        ]
+        from kantkod.model import ClarityModel
+
+        rows = [vacancy(f"review-{index}", **change) for index, (_, _, change) in enumerate(cases)]
+        findings = analyse_group(rows, ClarityModel())
+        for row, result, (topic, kind, _) in zip(rows, findings, cases, strict=True):
+            with self.subTest(vacancy=row["id"], topic=topic, kind=kind):
+                notes = [item for item in result["record"]["issues"] if item["topic"] == topic]
+                self.assertEqual([item["type"] for item in notes], [kind] if kind else [])
+                if topic == "workplace" and notes:
+                    evidence = notes[0]["evidence"]
+                    self.assertEqual(len(evidence), 2)
+                    self.assertNotEqual(evidence[0]["quote"], evidence[1]["quote"])
+                    self.assertTrue(all(item["quote"] in row[item["field"]] for item in evidence))
+
+    def test_actual_and_legal_addresses_can_share_a_field(self):
+        row = vacancy(addresses=None, description="Юридический адрес: ул. Морская, д. 3. Место работы: Гусев, ул. Заводская, д. 9.")
+        result = analyse_group([row], None)[0]
+        self.assertEqual(result["conditions"]["workplace"], "гусев, ул. заводская, д. 9")
+        self.assertFalse(any(item["topic"] == "workplace" for item in result["record"]["issues"]))
+
     def test_local_sample_counts_and_evidence(self):
         with TemporaryDirectory() as directory:
             output, store = Path(directory) / "output.json", Path(directory) / "state.sqlite3"
@@ -103,6 +148,7 @@ class AnalysisTests(unittest.TestCase):
     def test_model_adds_confirmed_findings_on_held_out_cases(self):
         comparison = evaluate_model("holdout")
         self.assertGreater(comparison["rules_with_ml"]["true_positives"], comparison["rules"]["true_positives"])
+        self.assertLessEqual(comparison["rules_with_ml"]["false_positives"], comparison["rules"]["false_positives"])
 
 
 class ApiTests(unittest.TestCase):
@@ -204,6 +250,17 @@ class StorageTests(unittest.TestCase):
         report = self.run_rows(fresh)
         self.assertEqual(self.states()["A"]["schedule"]["status"], "review")
         self.assertEqual(len(next(issue for issue in report["vacancies"][0]["issues"] if issue["topic"] == "schedule")["evidence"]), 2)
+
+    def test_changed_address_in_prose_reopens_only_workplace(self):
+        self.run_rows(vacancy(addresses=None, description="Место работы: Калининград, ул. Мира, д. 8."))
+        self.confirm("A", "workplace")
+        self.confirm("A", "pay")
+        report = self.run_rows(vacancy(addresses=None, description="Место работы: Калининград, ул. Мира, д. 18."))
+        state = self.states()["A"]
+        self.assertEqual(state["workplace"]["status"], "review")
+        self.assertIn("18", state["workplace"]["current"])
+        self.assertEqual(state["pay"]["status"], "resolved")
+        self.assertFalse(any(issue["topic"] == "workplace" for issue in report["vacancies"][0]["issues"]))
 
     def test_stale_browser_state_cannot_confirm_new_value(self):
         self.run_rows(vacancy())

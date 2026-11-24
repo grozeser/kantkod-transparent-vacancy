@@ -9,7 +9,7 @@ TOPICS = {
     "pay": "Оплата", "schedule": "График", "workplace": "Место работы",
     "employment": "Тип занятости",
 }
-RULES_VERSION = "1.0"
+RULES_VERSION = "1.1"
 QUESTIONS = {
     "title": "Как называется должность полностью и к какому направлению она относится?",
     "duties": "Какие 3–5 задач сотрудник выполняет регулярно? Укажите действия и результаты работы.",
@@ -36,6 +36,11 @@ VAGUE = {
 EMPTY = {"", "нет данных", "не указано", "не указан", "не указана", "не заполнено", "null", "none", "-"}
 TIME_RANGE = re.compile(r"\b(\d{1,2})[:.](\d{2})\s*(?:-|до)\s*(\d{1,2})[:.](\d{2})\b")
 CYCLE = re.compile(r"\b([1-7])\s*/\s*([1-7])\b")
+CYCLE_WORDS = dict(zip("один сутки двое два две трое три четверо четыре пять шесть семь".split(), (1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 6, 7)))
+WRITTEN_CYCLE = re.compile(r"\b(" + "|".join(CYCLE_WORDS) + r"|\d)\s*(?:рабочих\s+)?(?:день|дня|дней|смены|смен)?\s+через\s+(" + "|".join(CYCLE_WORDS) + r"|\d)\b")
+STREET_ADDRESS = re.compile(r"\b(?:ул(?:ица)?|пр(?:оспект)?|пер(?:еулок)?|шоссе|набережная|бульвар|площадь)\.?\s+[\w -]+?,?\s+(?:д(?:ом)?\.?\s*)?\d+[\w/-]*\b")
+ADDRESS_LABEL = re.compile(r"\b((?:(?:юридическ\w*|регистрационн\w*|почтов\w*|фактическ\w*)\s+)?адрес|место\s+работы)\s*[:\-]")
+TITLE_LABEL = re.compile(r"\b(?:должность|вакансия)\s*[:\-]\s*([а-яa-z][^.?!;:]{1,90})")
 EXPERIENCE = re.compile(r"(?:(?:опыт|стаж)\D{0,25})?(\d+)\s*(?:лет|года|год)(?:\s+опыт\w*)?")
 AMOUNT = re.compile(r"\d{1,3}(?: \d{3})+|\d+(?:[.,]\d+)?")
 CONDITIONAL = re.compile(r"\b(?:возмож\w*|либо|или|на выбор|по согласованию|в зависимости)\b")
@@ -134,7 +139,11 @@ def payment_in(text, structured=False):
 
 def schedule_facts(text):
     cycles = {f"{match[1]}/{match[2]}" for match in CYCLE.finditer(text)}
-    if re.search(r"пятиднев|понедельник\w*\s*-\s*пятниц", text):
+    for left, right in WRITTEN_CYCLE.findall(text):
+        days = [CYCLE_WORDS.get(part, part) for part in (left, right)]
+        if all(1 <= int(day) <= 7 for day in days):
+            cycles.add(f"{days[0]}/{days[1]}")
+    if re.search(r"пятиднев|понедельник\w*\s*(?:-|по)\s*пятниц", text):
         cycles.add("5/2")
     hours = {
         f"{int(match[1]):02}:{match[2]}–{int(match[3]):02}:{match[4]}"
@@ -147,12 +156,16 @@ def schedule_facts(text):
 def work_mode(text):
     if re.search(r"гибрид|частично (?:удален|дистанц)|удален\w* (?:или|и) офис|офис\w* (?:или|и) удален", text):
         return "hybrid" if " или " not in text else None
-    if re.search(r"(?:не|без возможности)\s+(?:полностью\s+)?(?:удален|дистанц)", text):
+    if re.search(r"(?:не|без возможности)\s+(?:полностью\s+)?(?:удален|дистанц)|(?:удален\w*|дистанцион\w*)\s+(?:работа|формат|режим)\s+не\s+(?:предусмотр|доступ|допуск)", text):
         return None
     if re.search(r"удален\w*|дистанцион\w*", text):
         if re.search(r"(?:полностью\s+(?:удален|дистанц)|из любого (?:города|региона)|только удален|(?:работа|режим|формат)\s+(?:удален|дистанц)|(?:удален\w*|дистанцион\w*)\s+(?:работа|формат|режим))", text):
             return "remote_only"
-        return "remote"
+        if re.fullmatch(r"удален\w*|дистанцион\w*", text):
+            return "remote"
+        return None
+    if re.search(r"(?:не требуется|\bне\s*обязательн\w*|без обязательного присутствия|не нужно|не надо)", text):
+        return None
     if re.search(r"(?:(?:только|полностью)\s+в офис|обязательн\w*\s+(?:ежедневн\w*\s+)?присутствие\s+в офис|ежедневн\w*\s+(?:\w+\s+){0,3}в офис|офисный формат|работа в офисе)", text):
         return "office"
     return None
@@ -201,9 +214,11 @@ def examples_for(topic, sources):
     return [(topic, field) for field in unique_fields(sources) if len(field.text) >= 8]
 
 
+DUTY_ACTION = re.compile(r"\b(?:регистрир|прием|веден|вести|учет|подготов|состав|разработ|сбор|обнов|осмотр|оформ|свер|провер|созда|выда|обуч|диагност|настраив|обрабатыв|анализир|написан|коммуникац|ремонтир|принима|перевоз)\w*\s+(?!задач\b|поручен\w*|вопрос\w*|деятельност\w*|процесс\w*)[а-яa-z]{3,}")
+
+
 def specific_duties(sources):
-    actions = re.compile(r"\b(?:регистрир|прием|веден|учет|подготов|состав|разработ|сбор|обнов|осмотр|оформ|свер|провер|созда|выда|обуч|диагност|настраив|обрабатыв|анализир|написан|коммуникац)\w*\s+(?!задач\b|поручен\w*|вопрос\w*|деятельност\w*|процесс\w*)[а-яa-z]{3,}")
-    return len({match[0] for field in sources for match in actions.finditer(field.text)}) >= 2
+    return len({match[0] for field in sources for match in DUTY_ACTION.finditer(field.text)}) >= 2
 
 
 def specific_requirements(sources):
@@ -258,7 +273,7 @@ def pay_review(vacancy, prose):
         return [issue("pay", "conflict", stated, "Минимальная сумма больше максимальной.")], [], f"{low:g}–{high:g}"
     if stated:
         for field, (other_low, other_high) in known:
-            if re.search(r"(?:налог|на руки|за час|за смену|в час|в день|преми|бонус|испытательн)", field.text):
+            if re.search(r"(?:налог|на руки|преми|бонус|испытательн|почасов|еженедельн|ежедневн|сдельн|(?:\b(?:за|в|на)\s+|/\s*)(?:час|смену|день|сутки|недел\w*|квартал|год)\b)", field.text):
                 continue  # Different pay bases are not directly comparable to structured amounts.
             if (high is not None and other_low is not None and high < other_low) or (low is not None and other_high is not None and low > other_high):
                 boundary = high_source if high is not None and other_low is not None and high < other_low else low_source
@@ -275,16 +290,31 @@ def pay_review(vacancy, prose):
 
 
 def workplace_review(address_fields, prose):
-    prose = [f for f in prose if re.search(r"удален|дистанц|офис|рабоч\w*\s+мест|\bадрес\b|гибрид", f.text)]
+    prose = [f for f in prose if re.search(r"удален|дистанц|офис|(?:рабоч\w*\s+мест|место\s+работ)|\bадрес\b|гибрид", f.text) or STREET_ADDRESS.search(f.text)]
     all_fields = unique_fields(address_fields + prose)
-    modes = [(mode, f) for f in all_fields if (mode := work_mode(f.text))]
+    phrases = [Field(f.path, fragment.strip()) for f in all_fields
+               for fragment in re.split(r"[;\n]+|(?<=[.?!])\s+(?=[А-ЯЁ])|(?i:,\s+(?:но|при этом)\s+|</p>|<br\s*/?>)", str(f.value))
+               if fragment.strip()]
+    modes = [(mode, f) for f in phrases if (mode := work_mode(f.text))]
     remote = next((f for mode, f in modes if mode == "remote_only" and not CONDITIONAL.search(f.text)), None)
     office = next((f for mode, f in modes if mode == "office" and not CONDITIONAL.search(f.text)), None)
-    if remote and office and remote.path != office.path:
+    if remote and office:
         return [issue("workplace", "conflict", [remote, office], "Полная удалёнка несовместима с обязательным присутствием в офисе.")], [], f"{remote.text} / {office.text}"
-    stated_address = next((f for f in address_fields if re.search(r"\b(?:ул|улица|проспект|дом|пер|шоссе|бульвар|площадь)\b|\d", f.text)), None)
-    summary = " / ".join(sorted({f.text for f in address_fields + [f for _, f in modes]}))
-    if stated_address or any(mode in {"remote", "remote_only"} for mode, _ in modes):
+    text_addresses = set()
+    for field in prose:
+        text = field.text
+        labels = list(ADDRESS_LABEL.finditer(text))
+        for match in STREET_ADDRESS.finditer(text):
+            label = next((item for item in reversed(labels) if item.end() <= match.start()), None)
+            if label and label[1].startswith(("юридическ", "регистрационн", "почтов")):
+                continue
+            prefix = text[label.end():match.start()].strip(" ,") if label else ""
+            if not re.fullmatch(r"(?:г\.\s*)?[а-я -]+", prefix):
+                prefix = ""
+            text_addresses.add((prefix + ", " if prefix else "") + match[0])
+    stated_address = any(re.search(r"\b(?:ул|улица|проспект|дом|пер|шоссе|бульвар|площадь)\b|\d", f.text) for f in address_fields)
+    summary = " / ".join(sorted(text_addresses | {f.text for f in address_fields + [f for _, f in modes]}))
+    if stated_address or text_addresses or any(mode in {"remote", "remote_only"} for mode, _ in modes):
         return [], [], summary
     if not all_fields:
         return [missing("workplace", "addresses.address")], [], ""
@@ -297,6 +327,7 @@ def workplace_review(address_fields, prose):
 def prepare(vacancy):
     description = fields(vacancy, "description", "job-description", "job_description", "additional-information", "additional_information", "conditions")
     title = fields(vacancy, "job-name", "job_name", "title", "name")
+    described_title = next(((f, match[1].strip()) for f in description if (match := TITLE_LABEL.search(f.text))), None)
     duties = fields(vacancy, "duty", "duties", "responsibilities")
     qualifications = fields(vacancy, "requirement.qualification", "requirement.education", "requirements", "qualification", "requirement")
     experience = fields(vacancy, "requirement.experience", "experience")
@@ -311,8 +342,18 @@ def prepare(vacancy):
         ("requirements", qualifications, "requirement.qualification", r"требован|необходим|ожидаем|кандидат|опыт"),
         ("employment", employment, "employment", r"занятост|ставк"),
     ):
-        text_sources = unique_fields(structured + [f for f in description if re.search(clues, f.text)])
+        text_sources = unique_fields(structured + [f for f in description if re.search(clues, f.text) or (topic == "duties" and DUTY_ACTION.search(f.text))])
         summary[topic] = " / ".join(sorted({f.text for f in text_sources}))
+        if topic == "title" and described_title and not CONDITIONAL.search(described_title[1]):
+            described_field, described_name = described_title
+            summary[topic] = title[0].text if title else described_name
+            if title:
+                structured_words = set(re.findall(r"[а-яa-z]{3,}", title[0].text))
+                described_words = set(re.findall(r"[а-яa-z]{3,}", described_name))
+                if structured_words and described_words and structured_words.isdisjoint(described_words):
+                    findings.append(issue(topic, "conflict", [title[0], described_field], "В названии и описании указаны разные должности."))
+                    summary[topic] += " / " + described_name
+            continue
         if topic == "requirements" and any(number(f.value) for f in experience):
             summary[topic] += " / " + " / ".join(f.text for f in experience)
             continue
@@ -327,8 +368,6 @@ def prepare(vacancy):
             if kinds:
                 summary[topic] = kinds[0][1].text
                 continue
-        if topic == "duties" and not text_sources and description:
-            text_sources = description
         if not text_sources:
             findings.append(missing(topic, expected))
         elif topic == "title" and text_sources[0].text in {"специалист", "сотрудник", "менеджер", "помощник", "рабочий"}:
@@ -364,7 +403,7 @@ def prepare(vacancy):
     employer_id = fields(vacancy, "company.companycode", "company.id", "employer.id", "companycode")
     record = {
         "id": vacancy["id"], "url": link_for(vacancy),
-        "title": clean(title[0].value) if title else "Должность не указана",
+        "title": clean(title[0].value) if title else (described_title[1].capitalize() if described_title else "Должность не указана"),
         "employer": clean(company[0].value) if company else None,
         "employer_id": str(employer_id[0].value) if employer_id else None,
         "issues": findings,

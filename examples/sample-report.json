@@ -3,9 +3,9 @@
     "schema_version": 1,
     "mode": "file",
     "source": "sample-vacancies.json",
-    "generated_at": "2026-11-24T18:44:27+00:00",
+    "generated_at": "2026-11-24T19:42:47+00:00",
     "model": "tfidf-logreg-910f8918da0e",
-    "rules": "1.0-82e4e70f480b",
+    "rules": "1.1-7a34ceca8400",
     "pages": 1,
     "vacancies": 10,
     "analysed": 10,
@@ -135,7 +135,7 @@
           "evidence": [
             {
               "field": "duty",
-              "quote": "Приём звонков и регистрация обращений. Работа полностью дистанционная из любого города."
+              "quote": "Работа полностью дистанционная из любого города."
             },
             {
               "field": "requirement.qualification",
