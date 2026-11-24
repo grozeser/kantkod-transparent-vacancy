@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Рабочее место редактора вакансий Калининградской области">
+  <title>Прозрачная вакансия · Кабинет редактора</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-inner">
+      <div class="identity"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span><span>Прозрачная вакансия</span></div>
+      <span class="region">Калининградская область</span>
+    </div>
+  </header>
+  <main class="wrap">
+    <div class="intro">
+      <div><h1>Проверка вакансий</h1><p id="run-info">Загружаем последний отчёт…</p></div>
+      <button class="secondary" id="refresh" type="button">Обновить отчёт</button>
+    </div>
+    <p id="run-error" class="notice" hidden></p>
+    <div id="empty-report" class="empty" hidden>Сформируйте отчёт командой <code>python -m kantkod check --input examples/sample-vacancies.json</code> и нажмите «Обновить отчёт».</div>
+    <section id="metrics" class="metrics" aria-label="Сводка отчёта" hidden></section>
+    <div id="workspace" class="workspace" hidden>
+      <section class="queue" aria-labelledby="queue-title">
+        <div class="queue-controls">
+          <h2 id="queue-title">Вакансии <span id="match-count"></span></h2>
+          <label for="search" class="sr-only">Поиск вакансий</label>
+          <input type="search" id="search" placeholder="Должность, работодатель или ID">
+          <div class="filters">
+            <select id="topic-filter" aria-label="Тема"><option value="">Все темы</option></select>
+            <select id="type-filter" aria-label="Вид замечания"><option value="">Все виды</option><option value="conflict">Противоречия</option><option value="missing">Пропуски</option><option value="ambiguous">Уточнения</option><option value="review">Проверить повторно</option></select>
+          </div>
+        </div>
+        <div id="queue-list" class="queue-list"></div>
+      </section>
+      <section id="detail" class="detail" aria-label="Карточка вакансии"></section>
+    </div>
+    <details id="passport" class="passport" hidden>
+      <summary>Паспорт отчёта</summary>
+      <dl id="passport-fields"></dl>
+      <ul id="diagnostics"></ul>
+    </details>
+  </main>
+  <dialog id="group-dialog" aria-labelledby="group-title">
+    <div class="dialog-head"><h2 id="group-title">Вопросы работодателю</h2><button id="group-close" class="secondary" type="button">Закрыть</button></div>
+    <textarea id="group-text" aria-label="Текст пакета вопросов" readonly></textarea>
+    <button id="group-copy" class="primary" type="button">Скопировать текст</button>
+  </dialog>
+  <p id="message" class="toast" role="status" aria-live="polite" hidden></p>
+</body>
+</html>

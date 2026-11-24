@@ -1,0 +1,122 @@
+{
+  "dataset": "holdout",
+  "cases": 20,
+  "rules": {
+    "true_positives": 7,
+    "false_positives": 0,
+    "false_negatives": 5,
+    "analysis_ms": 18.3,
+    "errors": [
+      {
+        "case": "duties-open-ended",
+        "missing": [
+          [
+            "duties",
+            "ambiguous"
+          ]
+        ],
+        "extra": []
+      },
+      {
+        "case": "duties-other-requests",
+        "missing": [
+          [
+            "duties",
+            "ambiguous"
+          ]
+        ],
+        "extra": []
+      },
+      {
+        "case": "requirements-personality",
+        "missing": [
+          [
+            "requirements",
+            "ambiguous"
+          ]
+        ],
+        "extra": []
+      },
+      {
+        "case": "schedule-open",
+        "missing": [
+          [
+            "schedule",
+            "ambiguous"
+          ]
+        ],
+        "extra": []
+      },
+      {
+        "case": "pay-open",
+        "missing": [
+          [
+            "pay",
+            "ambiguous"
+          ]
+        ],
+        "extra": []
+      }
+    ],
+    "confirmed_ml_examples": []
+  },
+  "rules_with_ml": {
+    "true_positives": 12,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "analysis_ms": 15.4,
+    "errors": [],
+    "confirmed_ml_examples": [
+      {
+        "case": "duties-open-ended",
+        "evidence": [
+          {
+            "field": "duty",
+            "quote": "Выполнять задачи, которые назначат в ходе работы."
+          }
+        ],
+        "recommendation": "Какие 3–5 задач сотрудник выполняет регулярно? Укажите действия и результаты работы."
+      },
+      {
+        "case": "duties-other-requests",
+        "evidence": [
+          {
+            "field": "duty",
+            "quote": "Обеспечивать повседневную деятельность подразделения и содействовать коллегам."
+          }
+        ],
+        "recommendation": "Какие 3–5 задач сотрудник выполняет регулярно? Укажите действия и результаты работы."
+      },
+      {
+        "case": "requirements-personality",
+        "evidence": [
+          {
+            "field": "requirements",
+            "quote": "Ответственность, желание развиваться и позитивный настрой."
+          }
+        ],
+        "recommendation": "Какие навыки и какой опыт обязательны, а чему можно научиться после трудоустройства?"
+      },
+      {
+        "case": "schedule-open",
+        "evidence": [
+          {
+            "field": "schedule",
+            "quote": "Рабочие часы будут согласованы после оформления."
+          }
+        ],
+        "recommendation": "В какие дни и часы нужно работать? Если есть смены, какой у них цикл?"
+      },
+      {
+        "case": "pay-open",
+        "evidence": [
+          {
+            "field": "salary",
+            "quote": "Сумма оплаты обсуждается индивидуально с кандидатом."
+          }
+        ],
+        "recommendation": "Какую сумму или вилку получит работник, за какой период и до или после удержаний?"
+      }
+    ]
+  }
+}
